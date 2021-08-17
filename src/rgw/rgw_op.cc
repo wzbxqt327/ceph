@@ -5899,6 +5899,17 @@ void RGWInitMultipart::execute(optional_yield y)
   policy.encode(aclbl);
   attrs[RGW_ATTR_ACL] = aclbl;
 
+  if (obj_legal_hold) {
+    bufferlist obj_legal_hold_bl;
+    obj_legal_hold->encode(obj_legal_hold_bl);
+    attrs[RGW_ATTR_OBJECT_LEGAL_HOLD] = std::move(obj_legal_hold_bl);
+  }
+  if (obj_retention) {
+    bufferlist obj_retention_bl;
+    obj_retention->encode(obj_retention_bl);
+    attrs[RGW_ATTR_OBJECT_RETENTION] = std::move(obj_retention_bl);
+  }
+
   populate_with_generic_attrs(s, attrs);
 
   /* select encryption mode */

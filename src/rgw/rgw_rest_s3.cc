@@ -3705,6 +3705,42 @@ void RGWSetRequestPayment_ObjStore_S3::send_response()
 
 int RGWInitMultipart_ObjStore_S3::get_params(optional_yield y)
 {
+  //handle object lock
+  auto obj_lock_mode_str = s->info.env->get("HTTP_X_AMZ_OBJECT_LOCK_MODE");
+  auto obj_lock_date_str = s->info.env->get("HTTP_X_AMZ_OBJECT_LOCK_RETAIN_UNTIL_DATE");
+  auto obj_legal_hold_str = s->info.env->get("HTTP_X_AMZ_OBJECT_LOCK_LEGAL_HOLD");
+  if (obj_lock_mode_str && obj_lock_date_str) {
+    boost::optional<ceph::real_time> date = ceph::from_iso_8601(obj_lock_date_str);
+    if (boost::none == date || ceph::real_clock::to_time_t(*date) <= ceph_clock_now()) {
+      s->err.message = "invalid x-amz-object-lock-retain-until-date value";
+      ldpp_dout(this,0) << s->err.message << dendl;
+      return -EINVAL;
+    }
+    if (strcmp(obj_lock_mode_str, "GOVERNANCE") != 0 && strcmp(obj_lock_mode_str, "COMPLIANCE") != 0) {
+      s->err.message = "invalid x-amz-object-lock-mode value";
+      ldpp_dout(this,0) << s->err.message << dendl;
+      return -EINVAL;
+    }
+    obj_retention = new RGWObjectRetention(obj_lock_mode_str, *date);
+  } else if (obj_lock_mode_str || obj_lock_date_str) {
+    s->err.message = "need both x-amz-object-lock-mode and x-amz-object-lock-retain-until-date ";
+    ldpp_dout(this,0) << s->err.message << dendl;
+    return -EINVAL;
+  }
+  if (obj_legal_hold_str) {
+    if (strcmp(obj_legal_hold_str, "ON") != 0 && strcmp(obj_legal_hold_str, "OFF") != 0) {
+      s->err.message = "invalid x-amz-object-lock-legal-hold value";
+      ldpp_dout(this,0) << s->err.message << dendl;
+      return -EINVAL;
+    }
+    obj_legal_hold = new RGWObjectLegalHold(obj_legal_hold_str);
+  }
+  if (!s->bucket->get_info().obj_lock_enabled() && (obj_retention || obj_legal_hold)) {
+    ldpp_dout(this, 0) << "ERROR: object retention or legal hold can't be set if bucket object lock not configured" << dendl;
+    op_ret = -ERR_INVALID_REQUEST;
+    return op_ret;
+  }
+
   RGWAccessControlPolicy_S3 s3policy(s->cct);
   op_ret = create_s3_policy(s, store, s3policy, s->owner);
   if (op_ret < 0)

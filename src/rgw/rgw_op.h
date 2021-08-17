@@ -1834,8 +1834,19 @@ protected:
   RGWAccessControlPolicy policy;
   ceph::real_time mtime;
 
+  //object lock
+  RGWObjectRetention *obj_retention;
+  RGWObjectLegalHold *obj_legal_hold;
 public:
-  RGWInitMultipart() {}
+  RGWInitMultipart() {
+    obj_retention = nullptr;
+    obj_legal_hold = nullptr;
+  }
+
+  ~RGWInitMultipart() override {
+    delete obj_retention;
+    delete obj_legal_hold;
+  }
 
   void init(rgw::sal::Store* store, struct req_state *s, RGWHandler *h) override {
     RGWOp::init(store, s, h);
